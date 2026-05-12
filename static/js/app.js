@@ -32,7 +32,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function formatNumber(n) {
     if (n === null || n === undefined || n === "N/A") return "N/A";
-    return Number(n).toLocaleString();
+    const num = Number(n);
+    if (Number.isNaN(num)) return String(n);
+    return num.toLocaleString();
   }
 
   function showToast(message, variant = "success") {
