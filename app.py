@@ -2,7 +2,9 @@
 
 import io
 import json
+import os
 import re
+import sys
 import urllib.request
 from datetime import datetime
 
@@ -11,7 +13,18 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-app = Flask(__name__)
+
+def _resource_path(*parts: str) -> str:
+    """Return the absolute path to a bundled resource (PyInstaller-aware)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+
+app = Flask(
+    __name__,
+    template_folder=_resource_path("templates"),
+    static_folder=_resource_path("static"),
+)
 
 _INNERTUBE_CONTEXT = {
     "client": {
