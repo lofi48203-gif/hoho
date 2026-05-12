@@ -1,22 +1,42 @@
 """Flask application for scraping YouTube video metadata and exporting to Excel."""
 
 import io
+import json
 import re
+import urllib.request
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request, send_file
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-import yt_dlp
 
 app = Flask(__name__)
+
+_INNERTUBE_CONTEXT = {
+    "client": {
+        "clientName": "WEB",
+        "clientVersion": "2.20231219.04.00",
+        "hl": "en",
+        "gl": "US",
+    }
+}
+
+_HTTP_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+}
 
 
 def extract_video_id(url: str) -> str | None:
     """Return the YouTube video ID from a URL, or None if unparseable."""
     patterns = [
-        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/v/|youtube\.com/shorts/)"
+        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/"
+        r"|youtube\.com/v/|youtube\.com/shorts/)"
         r"([a-zA-Z0-9_-]{11})",
     ]
     for pattern in patterns:
@@ -29,50 +49,125 @@ def extract_video_id(url: str) -> str | None:
     return None
 
 
-def format_count(value: int | None) -> str:
-    """Return a human-readable string for a count, or 'N/A' if unavailable."""
-    if value is None:
-        return "N/A"
-    return f"{value:,}"
+def _find_all(obj: dict | list, key: str) -> list:
+    """Recursively find all values for *key* in a nested JSON structure."""
+    results: list = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == key:
+                results.append(v)
+            results.extend(_find_all(v, key))
+    elif isinstance(obj, list):
+        for item in obj:
+            results.extend(_find_all(item, key))
+    return results
+
+
+def _innertube_next(video_id: str) -> dict:
+    """Call YouTube's innertube ``/next`` endpoint and return the JSON."""
+    payload = json.dumps({"videoId": video_id, "context": _INNERTUBE_CONTEXT}).encode()
+    req = urllib.request.Request(
+        "https://www.youtube.com/youtubei/v1/next",
+        data=payload,
+        headers=_HTTP_HEADERS,
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read())
+
+
+def _oembed(video_id: str) -> dict:
+    """Call YouTube's oEmbed endpoint and return the JSON."""
+    oembed_url = (
+        f"https://www.youtube.com/oembed"
+        f"?url=https://www.youtube.com/watch?v={video_id}&format=json"
+    )
+    req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def _parse_views(data: dict) -> int | None:
+    """Extract the numeric view count from an innertube response."""
+    for vcr in _find_all(data, "videoViewCountRenderer"):
+        text = vcr.get("viewCount", {}).get("simpleText", "")
+        digits = re.sub(r"[^0-9]", "", text)
+        if digits:
+            return int(digits)
+    return None
+
+
+def _parse_date(data: dict) -> str:
+    """Extract and reformat the upload date as MM-DD-YYYY."""
+    for dt in _find_all(data, "dateText"):
+        text = dt.get("simpleText", "")
+        if text:
+            for fmt in ("%b %d, %Y", "%B %d, %Y"):
+                try:
+                    return datetime.strptime(text, fmt).strftime("%m-%d-%Y")
+                except ValueError:
+                    continue
+            return text
+    return "N/A"
+
+
+def _parse_likes(data: dict) -> int | None:
+    """Extract the like count from accessibility text."""
+    for text in _find_all(data, "accessibilityText"):
+        if isinstance(text, str) and "like this video along with" in text:
+            match = re.search(r"along with ([\d,]+)", text)
+            if match:
+                return int(match.group(1).replace(",", ""))
+    return None
+
+
+def _parse_comments(data: dict) -> str | None:
+    """Extract the comment count string from the engagement panel header."""
+    for panel in _find_all(data, "engagementPanelTitleHeaderRenderer"):
+        title_runs = panel.get("title", {}).get("runs", [])
+        if any("Comment" in r.get("text", "") for r in title_runs):
+            ctx_runs = panel.get("contextualInfo", {}).get("runs", [])
+            if ctx_runs:
+                return ctx_runs[0].get("text")
+    return None
 
 
 def fetch_video_metadata(url: str) -> dict:
-    """Fetch metadata for a single YouTube video using yt-dlp."""
+    """Fetch metadata for a single YouTube video."""
     video_id = extract_video_id(url)
     if not video_id:
         return {"error": f"Invalid YouTube URL: {url}", "url": url}
 
     canonical_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "extract_flat": False,
-    }
+    try:
+        oembed_data = _oembed(video_id)
+        title = oembed_data.get("title", "N/A")
+        channel = oembed_data.get("author_name", "N/A")
+    except Exception:
+        title = "N/A"
+        channel = "N/A"
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(canonical_url, download=False)
-
-        upload_date = info.get("upload_date", "")
-        if upload_date and len(upload_date) == 8:
-            date_obj = datetime.strptime(upload_date, "%Y%m%d")
-            formatted_date = date_obj.strftime("%m-%d-%Y")
-        else:
-            formatted_date = "N/A"
-
-        return {
-            "date": formatted_date,
-            "channel": info.get("channel", info.get("uploader", "N/A")),
-            "url": canonical_url,
-            "title": info.get("title", "N/A"),
-            "views": info.get("view_count"),
-            "likes": info.get("like_count"),
-            "comments": info.get("comment_count"),
-        }
+        next_data = _innertube_next(video_id)
+        views = _parse_views(next_data)
+        formatted_date = _parse_date(next_data)
+        likes = _parse_likes(next_data)
+        comments = _parse_comments(next_data)
     except Exception as exc:
-        return {"error": str(exc), "url": canonical_url}
+        return {
+            "error": str(exc),
+            "url": canonical_url,
+        }
+
+    return {
+        "date": formatted_date,
+        "channel": channel,
+        "url": canonical_url,
+        "title": title,
+        "views": views,
+        "likes": likes,
+        "comments": comments,
+    }
 
 
 @app.route("/")

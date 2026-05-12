@@ -27,6 +27,6 @@ Open <http://localhost:5000> in your browser.
 | Layer     | Technology          |
 | --------- | ------------------- |
 | Backend   | Flask               |
-| Scraping  | yt-dlp              |
+| Scraping  | YouTube innertube + oEmbed APIs |
 | Excel     | openpyxl            |
 | Frontend  | Bootstrap 5 + vanilla JS |

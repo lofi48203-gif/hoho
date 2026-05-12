@@ -50,16 +50,46 @@ class TestScrapeRoute:
         resp = client.post("/api/scrape", json={"urls": []})
         assert resp.status_code == 400
 
-    @patch("app.yt_dlp.YoutubeDL")
-    def test_valid_url_returns_metadata(self, mock_ydl_cls, client):
-        mock_instance = mock_ydl_cls.return_value.__enter__.return_value
-        mock_instance.extract_info.return_value = {
-            "upload_date": "20230615",
-            "channel": "TestChannel",
+    @patch("app._innertube_next")
+    @patch("app._oembed")
+    def test_valid_url_returns_metadata(self, mock_oembed, mock_next, client):
+        mock_oembed.return_value = {
             "title": "Test Video",
-            "view_count": 1000,
-            "like_count": 50,
-            "comment_count": 10,
+            "author_name": "TestChannel",
+        }
+        mock_next.return_value = {
+            "contents": {
+                "twoColumnWatchNextResults": {
+                    "results": {
+                        "results": {
+                            "contents": [
+                                {
+                                    "videoPrimaryInfoRenderer": {
+                                        "viewCount": {
+                                            "videoViewCountRenderer": {
+                                                "viewCount": {"simpleText": "1,000 views"},
+                                            }
+                                        },
+                                        "dateText": {"simpleText": "Jun 15, 2023"},
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "engagementPanels": [
+                {
+                    "engagementPanelSectionListRenderer": {
+                        "header": {
+                            "engagementPanelTitleHeaderRenderer": {
+                                "title": {"runs": [{"text": "Comments"}]},
+                                "contextualInfo": {"runs": [{"text": "42"}]},
+                            }
+                        }
+                    }
+                }
+            ],
         }
 
         resp = client.post(
@@ -75,6 +105,7 @@ class TestScrapeRoute:
         assert result["channel"] == "TestChannel"
         assert result["title"] == "Test Video"
         assert result["views"] == 1000
+        assert result["comments"] == "42"
 
     def test_invalid_url_returns_error_in_result(self, client):
         resp = client.post(
