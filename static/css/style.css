@@ -1,0 +1,62 @@
+body {
+  background-color: #f8f9fa;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+
+.card {
+  border: none;
+  border-radius: 12px;
+}
+
+textarea.form-control {
+  border-radius: 8px;
+  resize: vertical;
+  font-size: 0.95rem;
+}
+
+textarea.form-control:focus {
+  border-color: #ff0000;
+  box-shadow: 0 0 0 0.2rem rgba(255, 0, 0, 0.15);
+}
+
+.btn-danger {
+  background-color: #ff0000;
+  border-color: #ff0000;
+}
+
+.btn-danger:hover {
+  background-color: #cc0000;
+  border-color: #cc0000;
+}
+
+.table th {
+  white-space: nowrap;
+}
+
+.table td {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table td a {
+  color: #0563c1;
+}
+
+.progress {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.toast {
+  border-radius: 10px;
+}
+
+#resultsTable tbody tr.error-row {
+  background-color: #fff3cd;
+}
