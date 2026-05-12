@@ -33,11 +33,25 @@ For invalid URL testing: `https://www.youtube.com/watch?v=INVALID_VIDEO_ID_123`
 - File `youtube_metadata.xlsx` downloads
 - Verify with openpyxl: headers are bold with red background, data types correct
 - View Count and Like Count should be integers; Comment Count may be abbreviated string
+- A green toast notification "Excel file downloaded!" should appear (requires Bootstrap JS)
 
 ### 3. Invalid URL Handling
 - Enter an invalid YouTube URL and scrape
 - Row should show "N/A" for all metadata fields
 - App should not crash or show error page
+
+### 4. Desktop Window Mode (main.py)
+- `python main.py` opens a native desktop window via pywebview
+- **Requires** PyGObject (GTK) or QtPy (Qt) Python bindings
+- On headless Linux VMs or environments missing these bindings, this mode will fail with `WebViewException`
+- To test: need a machine with a full desktop environment (e.g., Windows)
+- Browser mode (`python app.py`) exercises the same Flask app and can verify `_resource_path()` changes
+
+### 5. PyInstaller Build
+- Build: `pyinstaller youtube_scraper.spec`
+- Output: `dist/YouTubeMetadataScraper` (Linux) or `dist/YouTubeMetadataScraper.exe` (Windows)
+- Expected size: ~32 MB
+- Verify file exists and has executable permissions
 
 ## Known Behaviors
 
@@ -46,6 +60,8 @@ For invalid URL testing: `https://www.youtube.com/watch?v=INVALID_VIDEO_ID_123`
 - **Browser form caching**: Chrome may restore previous textarea content on refresh, but the JS counter won't update. Use the Clear button or type fresh to trigger input events.
 - **No API key required**: The scraper uses public YouTube innertube + oEmbed endpoints.
 - **yt-dlp won't work**: YouTube blocks yt-dlp in server environments. The app uses direct HTTP requests to YouTube's APIs instead.
+- **Bootstrap JS toast**: The toast notification after Excel export is a good way to verify the Bootstrap JS CDN script tag is loaded. If toasts don't appear, check that `bootstrap.bundle.min.js` is loaded in `index.html`.
+- **pywebview on Linux**: Needs `python3-gi` and `gir1.2-webkit2-4.0` system packages, or `PyGObject` and `qtpy` pip packages. These may not work with pyenv-installed Python versions.
 
 ## Unit Tests
 
